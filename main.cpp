@@ -21,7 +21,7 @@ Eigen::VectorXf CSVtoVector(std::string file, int N) {
     return vector;
 }
 
-// Saving the w vector to the file
+// Saving the vector to the file
 void WriteFile(Eigen::VectorXf vector, std::string filename) {
     
     std::ofstream myfile (filename.append(".txt"), std::ios_base::app);
@@ -213,7 +213,11 @@ Eigen::MatrixXf Restriction_operator(int i){
 // Restriction operation ends here
 
 // Restriction operation starts here
-Eigen::VectorXf Restriction(Eigen::VectorXf d, Eigen::MatrixXf R_s){
+Eigen::VectorXf Restriction(Eigen::VectorXf d, int N){
+
+    std::cout << "\n \n Restricting.... \n" << std::endl;
+
+    Eigen::MatrixXf R_s = Restriction_operator(N);
 
     Eigen::VectorXf d_restricted = R_s * d;
         
@@ -222,23 +226,9 @@ Eigen::VectorXf Restriction(Eigen::VectorXf d, Eigen::MatrixXf R_s){
 // Restriction operation ends here
 
 // Restriction operation starts here
-Eigen::VectorXf Prolongation(Eigen::VectorXf w, Eigen::MatrixXf P_s){
+Eigen::VectorXf Prolongation(Eigen::VectorXf w, int N){
 
-    Eigen::VectorXf w_prolongated = P_s * w;
-        
-    return w_prolongated;
-}   
-// Restriction operation ends here
-
-// V-Cycle starts here
-Eigen::VectorXf VCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N){
-
-    // V-Cycle starts
-    Eigen::MatrixXf A = BuildA(N);
-
-    Eigen::VectorXf w_tilda = JacobiSmoother(A, w_old, f, 20000, 1E-01);
-    
-    WriteFile(w_tilda, "w_tilda");
+    std::cout << "\n \n Prolongating.... \n" << std::endl;
 
     Eigen::MatrixXf R_s = Restriction_operator(N);
 
@@ -246,13 +236,42 @@ Eigen::VectorXf VCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N){
     P_s(0, 0) = 1;
     P_s(N, N/2) = 1;
 
+    Eigen::VectorXf w_prolongated = P_s * w;
+        
+    return w_prolongated;
+}   
+// Restriction operation ends here
+
+Eigen::MatrixXf BuildA2h(Eigen::MatrixXf A, int N){
+
+    Eigen::MatrixXf R_s = Restriction_operator(N);
+
+    Eigen::MatrixXf P_s = 2 * R_s.transpose();
+    P_s(0, 0) = 1;
+    P_s(N, N/2) = 1;
+
+    Eigen::MatrixXf A_2h = R_s * A * P_s;
+
+    return A_2h;
+}
+
+// V-Cycle starts here
+Eigen::VectorXf VCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N){
+
+    // V-Cycle starts
+    Eigen::MatrixXf A = BuildA(N);
+
+    Eigen::VectorXf w_tilda = JacobiSmoother(A, w_old, f, 20000, 8E-01);
+    
+    WriteFile(w_tilda, "w_tilda");
+
     Eigen::VectorXf d = f - A * w_tilda;
 
     std::cout << "\n \n Restricting.... \n" << std::endl;
 
-    Eigen::VectorXf d_tilda = Restriction(d, R_s); 
+    Eigen::VectorXf d_tilda = Restriction(d, N); 
 
-    Eigen::MatrixXf A_2h = R_s * A * P_s;
+    Eigen::MatrixXf A_2h = BuildA2h(A, N);
 
     // Coarse grid equation
     Eigen::VectorXf d_tilda_tilda = JacobiSmoother(A_2h, Eigen::VectorXf::Zero(d_tilda.size()), d_tilda, 20000, 1E-08);
@@ -261,7 +280,7 @@ Eigen::VectorXf VCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N){
 
     std::cout << "\n \n Prolongating.... \n" << std::endl;
 
-    Eigen::VectorXf d_tilda_tilda_vector = Prolongation(d_tilda_tilda, P_s);
+    Eigen::VectorXf d_tilda_tilda_vector = Prolongation(d_tilda_tilda, N);
 
     WriteFile(d_tilda_tilda_vector, "d_tilda_tilda_vector");
 
@@ -269,9 +288,9 @@ Eigen::VectorXf VCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N){
 
     WriteFile(w_tilda_vector, "w_tilda_vector");
     
-    Eigen::VectorXf w = JacobiSmoother(A, w_tilda_vector, f, 20000, 1E-04); 
+    Eigen::VectorXf w = JacobiSmoother(A, w_tilda_vector, f, 20000, 8E-01); 
 
-    WriteFile(w, "w");
+    WriteFile(w, "w_final");
     
     return w;
 }   
@@ -290,6 +309,50 @@ Eigen::VectorXf SingleCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N){
     return w;
 }   
 // Single cycle ends
+
+Eigen::VectorXf MultiGridCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N, int K){
+
+    Eigen::VectorXf w;
+    std::vector<Eigen::VectorXf> myResVec;
+    std::vector<Eigen::VectorXf> myProVec;
+    std::vector<Eigen::VectorXf> myVec;
+    Eigen::VectorXf error;
+
+    if (K == 1){
+
+        std::cout << "\n coarsest grid: K=1" << std::endl;
+        Eigen::MatrixXf A = BuildA(N);
+        return (A.inverse() * f);
+    }
+
+    Eigen::MatrixXf A = BuildA(N);
+
+    Eigen::VectorXf w_tilda = JacobiSmoother(A, w_old, f, 20000, 8E-01);
+    if ( K == 5 ){
+        WriteFile(w_tilda, "w_tilda");
+    }   
+    
+    Eigen::VectorXf d = f - A * w_tilda;
+
+    Eigen::VectorXf d_tilda = Restriction(d, N); 
+          
+    error = MultiGridCycle(Eigen::VectorXf::Zero(d_tilda.size()), d_tilda, N/2, K-1);
+
+    Eigen::VectorXf d_tilda_tilda_vector = Prolongation(error, N); 
+
+    Eigen::VectorXf w_tilda_vector = w_tilda + d_tilda_tilda_vector;
+    if ( K == 5 ){
+        WriteFile(w_tilda_vector, "w_tilda_vector");
+    }
+
+    w = JacobiSmoother(A, w_tilda_vector, f, 20000, 6E-01); 
+    if ( K == 5 ){
+        WriteFile(w, "w_final");
+    }
+
+    return w;
+
+}
 
 int main(){
 
@@ -319,7 +382,9 @@ int main(){
 
     //Eigen::VectorXf w1 = SingleCycle(w_old, f, N);
 
-    Eigen::VectorXf w2 = VCycle(w_old, f, N);
+    //Eigen::VectorXf w2 = VCycle(w_old, f, N);
+
+    Eigen::VectorXf w2 = MultiGridCycle(w_old, f, N, 5);
 
     return 0;
 }  

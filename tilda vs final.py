@@ -5,7 +5,7 @@ import math
 
 Y1 = []
 
-X = np.linspace(0, 1, 129)
+X = np.linspace(0, 1, 65)
 
 for i in range(0, len(X)):
 	x = X[i]
