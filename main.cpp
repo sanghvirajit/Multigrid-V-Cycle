@@ -21,6 +21,18 @@ Eigen::VectorXf CSVtoVector(std::string file, int N) {
     return vector;
 }
 
+// Saving the w vector to the file
+void WriteFile(Eigen::VectorXf vector, std::string filename) {
+    
+    std::ofstream myfile (filename.append(".txt"), std::ios_base::app);
+
+    if (myfile.is_open()){
+
+            myfile << vector << "\n";
+    }
+    myfile.close();
+}
+    
 // Performing LDU decomposition
 std::vector<Eigen::MatrixXf> LUdecomposition(Eigen::MatrixXf M){
 
@@ -94,7 +106,7 @@ Eigen::MatrixXf BuildA(int i){
 // Building Matrix A ends
 
 // Building Jacobi Smoother
-Eigen::VectorXf JacobiSmoother(Eigen::MatrixXf A, Eigen::MatrixXf D, Eigen::VectorXf w_old, Eigen::VectorXf f, int Iterations, float Tol){
+Eigen::VectorXf JacobiSmoother(Eigen::MatrixXf A, Eigen::VectorXf w_old, Eigen::VectorXf f, int Iterations, float Tol){
 
     Eigen::VectorXf d;
     Eigen::VectorXf w_new;
@@ -102,6 +114,11 @@ Eigen::VectorXf JacobiSmoother(Eigen::MatrixXf A, Eigen::MatrixXf D, Eigen::Vect
 
     float norm = 1.0;
     float omega = 1.0;
+
+    std::vector<Eigen::MatrixXf> myVec= LUdecomposition(A);
+    Eigen::MatrixXf L = myVec[0];
+    Eigen::MatrixXf D = myVec[1];
+    Eigen::MatrixXf U = myVec[2];
 
     // adding initial line to the file
     std::ofstream myfile ("Residual.txt", std::ios_base::app);
@@ -219,35 +236,15 @@ Eigen::VectorXf VCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N){
     // V-Cycle starts
     Eigen::MatrixXf A = BuildA(N);
 
-    std::cout << "\n A_h: \n" << A << std::endl;
-
-    std::vector<Eigen::MatrixXf> myVec= LUdecomposition(A);
-    Eigen::MatrixXf L = myVec[0];
-    Eigen::MatrixXf D = myVec[1];
-    Eigen::MatrixXf U = myVec[2];
-
-    const clock_t begin_time = clock();
-    Eigen::VectorXf w_tilda = JacobiSmoother(A, D, w_old, f, 20000, 1E-01);
-    std::cout << "\n Execution time: " << float( clock () - begin_time ) /  CLOCKS_PER_SEC;
-
-    // writing number of iterations to the file
-    std::ofstream myfile ("w_tilda.txt", std::ios_base::app);
-
-        if (myfile.is_open()){
-
-            myfile << w_tilda << "\n";
-        }
-        myfile.close();
+    Eigen::VectorXf w_tilda = JacobiSmoother(A, w_old, f, 20000, 1E-01);
+    
+    WriteFile(w_tilda, "w_tilda");
 
     Eigen::MatrixXf R_s = Restriction_operator(N);
-
-    // std::cout << "\n R_s: \n" << R_s << std::endl;
 
     Eigen::MatrixXf P_s = 2 * R_s.transpose();
     P_s(0, 0) = 1;
     P_s(N, N/2) = 1;
-
-    // std::cout << "\n P_s: \n" << P_s << std::endl;
 
     Eigen::VectorXf d = f - A * w_tilda;
 
@@ -257,60 +254,25 @@ Eigen::VectorXf VCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N){
 
     Eigen::MatrixXf A_2h = R_s * A * P_s;
 
-    // std::cout << "\n A_2h: \n" << A_2h << std::endl;
-
-    std::vector<Eigen::MatrixXf> myVec_2h= LUdecomposition(A_2h);
-    Eigen::MatrixXf L_2h = myVec_2h[0];
-    Eigen::MatrixXf D_2h = myVec_2h[1];
-    Eigen::MatrixXf U_2h = myVec_2h[2];
-
     // Coarse grid equation
-    Eigen::VectorXf d_tilda_tilda = JacobiSmoother(A_2h, D_2h, Eigen::VectorXf::Zero(d_tilda.size()), d_tilda, 20000, 1E-08);
+    Eigen::VectorXf d_tilda_tilda = JacobiSmoother(A_2h, Eigen::VectorXf::Zero(d_tilda.size()), d_tilda, 20000, 1E-08);
 
-    // Saving the w vector to the file
-    std::ofstream myfile_2 ("d_tilda_tilda.txt", std::ios_base::app);
-
-    if (myfile_2.is_open()){
-
-            myfile_2 << d_tilda_tilda << "\n";
-    }
-    myfile_2.close();
+    WriteFile(d_tilda_tilda, "d_tilda_tilda");
 
     std::cout << "\n \n Prolongating.... \n" << std::endl;
 
     Eigen::VectorXf d_tilda_tilda_vector = Prolongation(d_tilda_tilda, P_s);
 
-    // Saving the w vector to the file
-    std::ofstream myfile_3 ("d_tilda_tilda_vector.txt", std::ios_base::app);
-
-    if (myfile_3.is_open()){
-
-            myfile_3 << d_tilda_tilda_vector << "\n";
-    }
-    myfile_3.close();
+    WriteFile(d_tilda_tilda_vector, "d_tilda_tilda_vector");
 
     Eigen::VectorXf w_tilda_vector = w_tilda + d_tilda_tilda_vector; 
 
-    // Saving the w vector to the file
-    std::ofstream myfile_4 ("w_tilda_vector.txt", std::ios_base::app);
-
-    if (myfile_4.is_open()){
-
-            myfile_4 << w_tilda_vector << "\n";
-    }
-    myfile_4.close();
+    WriteFile(w_tilda_vector, "w_tilda_vector");
     
-    Eigen::VectorXf w = JacobiSmoother(A, D, w_tilda_vector, f, 20000, 1E-04); 
+    Eigen::VectorXf w = JacobiSmoother(A, w_tilda_vector, f, 20000, 1E-04); 
 
-    // Saving the w vector to the file
-    std::ofstream myfile_5 ("w_final.txt", std::ios_base::app);
-
-    if (myfile_5.is_open()){
-
-            myfile_5 << w << "\n";
-    }
-    myfile_5.close();
-   
+    WriteFile(w, "w");
+    
     return w;
 }   
 // V-cycle ends
@@ -321,25 +283,9 @@ Eigen::VectorXf SingleCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N){
     // V-Cycle starts
     Eigen::MatrixXf A = BuildA(N);
 
-    std::cout << "\n A_h: \n" << A << std::endl;
+    Eigen::VectorXf w = JacobiSmoother(A, w_old, f, 50000, 1E-04);
 
-    std::vector<Eigen::MatrixXf> myVec= LUdecomposition(A);
-    Eigen::MatrixXf L = myVec[0];
-    Eigen::MatrixXf D = myVec[1];
-    Eigen::MatrixXf U = myVec[2];
-
-    const clock_t begin_time = clock();
-    Eigen::VectorXf w = JacobiSmoother(A, D, w_old, f, 50000, 1E-04);
-    std::cout << "\n Execution time: " << float( clock () - begin_time ) /  CLOCKS_PER_SEC;
-
-    // writing number of iterations to the file
-    std::ofstream myfile ("w.txt", std::ios_base::app);
-
-        if (myfile.is_open()){
-
-            myfile << w << "\n";
-        }
-        myfile.close();
+    WriteFile(w, "w");
 
     return w;
 }   

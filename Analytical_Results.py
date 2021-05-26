@@ -7,7 +7,7 @@ import json
 Y = []
 F = []
 
-X = np.linspace(0, 1, 129)
+X = np.linspace(0, 1, 65)
 
 print(X)
 
