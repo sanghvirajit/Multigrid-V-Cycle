@@ -191,6 +191,92 @@ Eigen::VectorXf JacobiSmoother(Eigen::MatrixXf A, Eigen::VectorXf w_old, Eigen::
 }
 // Building Jacobi Smoother ends
 
+// Building Jacobi Smoother
+Eigen::VectorXf GaussSeidelSmoother(Eigen::MatrixXf A, Eigen::VectorXf w_old, Eigen::VectorXf f, int Iterations, float Tol){
+
+    Eigen::VectorXf d;
+    Eigen::VectorXf w_new;
+    Eigen::VectorXf w_diff;
+
+    float norm = 1.0;
+    float omega = 1.0;
+
+    std::vector<Eigen::MatrixXf> myVec= LUdecomposition(A);
+    Eigen::MatrixXf L = myVec[0];
+    Eigen::MatrixXf D = myVec[1];
+    Eigen::MatrixXf U = myVec[2];
+
+    // adding initial line to the file
+    std::ofstream myfile ("Residual.txt", std::ios_base::app);
+
+        if (myfile.is_open()){
+
+            myfile << "Residual: " << "\n";
+        }
+        myfile.close();
+
+    // adding initial line to the file
+    std::ofstream myfile_2 ("Iterations.txt", std::ios_base::app);
+
+        if (myfile_2.is_open()){
+
+            myfile_2 << "Iterations: " << "\n";
+        }
+        myfile_2.close();    
+
+    int j = 0;
+    while( (norm > Tol) && (j < Iterations) ){
+        
+        // calculating the defect
+        d = f - A * w_old;
+
+        d = (L+D).inverse() * d;
+
+        // Update the vector
+        w_new = w_old + omega * d;
+
+        // calculating the norm
+        w_diff = w_new - w_old;
+
+        //std::cout << "\n w_diff: \n" << w_diff;
+
+        norm = w_diff.norm();
+
+        // Printing the residual norm
+        if(j==0){
+            std::cout << "\n Residual norm: " << "\n" <<  std::endl;
+        }
+        std::cout << norm << "\n" <<  std::endl;
+        
+        // writing residual norm to the file
+        std::ofstream myfile ("Residual.txt", std::ios_base::app);
+
+        if (myfile.is_open()){
+
+            myfile << norm << "\n";
+        }
+        myfile.close();
+
+        // writing number of iterations to the file
+        std::ofstream myfile_2 ("Iterations.txt", std::ios_base::app);
+
+        if (myfile_2.is_open()){
+
+            myfile_2 << j << "\n";
+        }
+        myfile_2.close();
+
+        w_old = w_new;
+       
+        ++j;
+
+    }
+    std::cout << "\n Solution Converged in: "  << j << " Iterations." << std::endl;
+
+    return w_new;
+}
+// Building Jacobi Smoother ends
+
 // Restriction operation starts here
 Eigen::MatrixXf Restriction_operator(int i){
         
@@ -302,7 +388,7 @@ Eigen::VectorXf SingleCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N){
     // V-Cycle starts
     Eigen::MatrixXf A = BuildA(N);
 
-    Eigen::VectorXf w = JacobiSmoother(A, w_old, f, 50000, 1E-04);
+    Eigen::VectorXf w = JacobiSmoother(A, w_old, f, 8135, 1E-08);
 
     WriteFile(w, "w");
 
@@ -310,6 +396,7 @@ Eigen::VectorXf SingleCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N){
 }   
 // Single cycle ends
 
+// Multilevel V Cycle starts here
 Eigen::VectorXf MultiGridCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N, int K){
 
     Eigen::VectorXf w;
@@ -327,8 +414,8 @@ Eigen::VectorXf MultiGridCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N, 
 
     Eigen::MatrixXf A = BuildA(N);
 
-    Eigen::VectorXf w_tilda = JacobiSmoother(A, w_old, f, 20000, 8E-01);
-    if ( K == 5 ){
+    Eigen::VectorXf w_tilda = GaussSeidelSmoother(A, w_old, f, 700, 1E-08);
+    if ( K == 6 ){
         WriteFile(w_tilda, "w_tilda");
     }   
     
@@ -341,25 +428,28 @@ Eigen::VectorXf MultiGridCycle(Eigen::VectorXf w_old, Eigen::VectorXf f, int N, 
     Eigen::VectorXf d_tilda_tilda_vector = Prolongation(error, N); 
 
     Eigen::VectorXf w_tilda_vector = w_tilda + d_tilda_tilda_vector;
-    if ( K == 5 ){
+    if ( K == 6 ){
         WriteFile(w_tilda_vector, "w_tilda_vector");
     }
 
-    w = JacobiSmoother(A, w_tilda_vector, f, 20000, 6E-01); 
-    if ( K == 5 ){
+    w = GaussSeidelSmoother(A, w_tilda_vector, f, 700, 1E-08); 
+    if ( K == 6 ){
         WriteFile(w, "w_final");
     }
 
     return w;
 
 }
+// Multilevel V Cycle ends here
 
 int main(){
 
     remove("Residual.txt");
     remove("Iterations.txt");
-    remove("W.txt");
-
+    remove("w_tilda.txt");
+    remove("w_tilda_vector.txt");
+    remove("w_final.txt");
+    
     int N;
     
     std::cout << "Enter the number of space grids: " << std::endl;
@@ -371,12 +461,12 @@ int main(){
     Eigen::VectorXf Y = CSVtoVector("Y.txt", N);
     Eigen::VectorXf f = CSVtoVector("F.txt", N);
 
-    std::cout << "\n Y: \n" << Y << std::endl;
+    //std::cout << "\n Y: \n" << Y << std::endl;
 
     f(0) = Y(0);
     f(N) = Y(N);
 
-    std::cout << "\n f: \n" << f << std::endl;
+    //std::cout << "\n f: \n" << f << std::endl;
 
     Eigen::VectorXf w_old = Eigen::VectorXf::Random(N+1);
 
@@ -384,7 +474,7 @@ int main(){
 
     //Eigen::VectorXf w2 = VCycle(w_old, f, N);
 
-    Eigen::VectorXf w2 = MultiGridCycle(w_old, f, N, 5);
+    Eigen::VectorXf w2 = MultiGridCycle(w_old, f, N, 6);
 
     return 0;
 }  

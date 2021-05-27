@@ -5,7 +5,7 @@ import math
 
 Y1 = []
 
-X = np.linspace(0, 1, 129)
+X = np.linspace(0, 1, 65)
 
 #PLOT Y
 y2 = pd.read_csv("w.txt", header=None)
